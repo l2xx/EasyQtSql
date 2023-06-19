@@ -1,4 +1,4 @@
-#ifndef EASYQTSQL_INSERTQUERY_H
+﻿#ifndef EASYQTSQL_INSERTQUERY_H
 #define EASYQTSQL_INSERTQUERY_H
 
 /*
@@ -127,6 +127,40 @@ public:
 
          res = q.exec();
       }
+
+      m_args.clear();
+      m_insertArray.clear();
+
+#ifdef DB_EXCEPTIONS_ENABLED
+
+      if (!res)
+         throw DBException(q);
+
+#endif
+
+      return NonQueryResult(q);
+   }
+
+   NonQueryResult exec2(const QVariantMap &data)
+   {
+      QString sql = QString(QStringLiteral("INSERT INTO "));
+      QString values = QString(QStringLiteral("VALUES ("));
+      sql.append(m_table).append(QStringLiteral(" ("));
+      const QList<QString> &keys = data.keys();
+      for (int i = 0; i < keys.size(); i++) {
+         sql.append(keys.at(i));
+         values.append(QStringLiteral("?"));
+         if (i != keys.size() - 1) {
+            sql.append(QStringLiteral(","));
+            values.append(QStringLiteral(","));
+         }
+      }
+      sql.append(QStringLiteral(") ")).append(values).append(QStringLiteral(")"));
+      q.prepare(sql);
+      for (int i = 0; i < keys.size(); i++) {
+         q.bindValue(i, data[keys.at(i)]);
+      }
+      bool res = q.exec();
 
       m_args.clear();
       m_insertArray.clear();
