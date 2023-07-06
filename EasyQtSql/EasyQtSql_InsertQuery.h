@@ -42,6 +42,7 @@ public:
    InsertQuery(const QString &table, const QSqlDatabase &db)
      : m_table(table)
      , q(db)
+     , m_driverName(db.driverName())
    {   }
 
    /*!
@@ -175,11 +176,49 @@ public:
       return NonQueryResult(q);
    }
 
+   NonQueryResult exec3(const QStringList &fields, const QVariantList &data)
+   {
+      QString fieldQuote = "\"";
+      if (m_driverName == "QMYSQL") {
+         fieldQuote = "`";
+      }
+      QStringList bindValues;
+      QStringList bindFields;
+      for (const auto &f : fields) {
+         bindValues << "?";
+         bindFields << fieldQuote + f + fieldQuote;
+      }
+      QString sql = QString("INSERT INTO %1(%2) VALUES(%3)").arg(m_table, bindFields.join(','), bindValues.join(','));
+      q.prepare(sql);
+      QVariantList tmp;
+      for (const auto &f : fields) {
+         tmp.clear();
+         for (const auto &row : data) {
+            tmp.append(row.toMap().value(f));
+         }
+         q.addBindValue(tmp);
+      }
+      bool res = q.execBatch();
+
+      m_args.clear();
+      m_insertArray.clear();
+
+#ifdef DB_EXCEPTIONS_ENABLED
+
+      if (!res)
+         throw DBException(q);
+
+#endif
+
+      return NonQueryResult(q);
+   }
+
 private:
    QString m_table;
    QSqlQuery q;
    QVariantList m_args;
    QVector<QVariantList> m_insertArray;
+   QString m_driverName;
 };
 
 #endif // EASYQTSQL_INSERTQUERY_H
