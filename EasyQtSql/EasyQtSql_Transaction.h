@@ -1,4 +1,4 @@
-#ifndef EASYQTSQL_TRANSACTION_H
+﻿#ifndef EASYQTSQL_TRANSACTION_H
 #define EASYQTSQL_TRANSACTION_H
 
 /*
@@ -124,6 +124,27 @@ public:
    NonQueryResult execNonQuery(const QString &sql) const
    {
       QSqlQuery q = m_db.exec(sql);
+
+#ifdef DB_EXCEPTIONS_ENABLED
+
+      QSqlError lastError = q.lastError();
+
+      if (lastError.isValid())
+         throw DBException(q);
+
+#endif
+
+      return NonQueryResult(q);
+   }
+
+   NonQueryResult execNonQuery_batch(const QString &sql, const QVariantList &data) const
+   {
+      QSqlQuery q(m_db);
+      q.prepare(sql);
+      foreach (const QVariant &i, data) {
+         q.addBindValue(i.toList());
+      }
+      q.execBatch();
 
 #ifdef DB_EXCEPTIONS_ENABLED
 
