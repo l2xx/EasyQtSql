@@ -27,7 +27,6 @@
 */
 
 #ifndef EASY_QT_SQL_MAIN
-
 #include <QtSql>
 #include "EasyQtSql_DBException.h"
 #include "EasyQtSql_NonQueryResult.h"
@@ -37,8 +36,90 @@
 #include "EasyQtSql_PreparedQuery.h"
 
 #endif
-
 #include "EasyQtSql_Util.h"
+
+namespace {
+
+static QVariant str2var(const QString &str)
+{
+    QJsonParseError err;
+    auto jsonDoc = QJsonDocument::fromJson(str.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError) {
+        return QVariant();
+    }
+    return jsonDoc.toVariant();
+}
+
+static QStringList sqlArrayToList(const QString &val)
+{
+    QStringList result;
+    QString word;
+    bool inQuote = false;
+    bool inEscape = false;
+    QChar c;
+    for (int i = 1; i < val.count() - 1; i ++ ) {
+        c = val.at(i);
+        if (!inQuote) {
+            if (c == '"'){
+                inQuote = true;
+            } else if (c == ',') {
+                result.append(word);
+                word.clear();
+            } else {
+                word.append(c);
+            }
+        } else {
+            if (inEscape) {
+                word.append(c);
+                inEscape = false;
+            } else {
+                if (c == '\\'){
+                    inEscape = true;
+                } else if (c == '"') {
+                    inQuote = false;
+                } else {
+                    word.append(c);
+                }
+            }
+        }
+    }
+    if (!word.isEmpty()) result.append(word);
+    return result;
+}
+
+static QVariant formatSqlValue(const QVariant &val, const QString &format)
+{
+    if (!val.isValid() || val.isNull()) {
+        return QVariant();
+    }
+    QString fmt = format;
+    if (val.type() == QVariant::ULongLong || val.type() == QVariant::LongLong) {
+        fmt = "string";
+    }
+    if (fmt.isEmpty()) {
+        return val;
+    }
+    if (val.type() == QVariant::Date) {
+        return QVariant(val.toDate().toString(fmt));
+    } else if (val.type() == QVariant::DateTime) {
+        return QVariant(val.toDateTime().toString(fmt));
+    } else if (val.type() ==  QVariant::Time) {
+        return QVariant(val.toTime().toString(fmt));
+    } else if (val.type() == QVariant::String) {
+        if (fmt == "array") {
+            return QVariant(sqlArrayToList(val.toString()));
+        } else if (fmt == "json") {
+            return str2var(val.toString());
+        }
+    } else if (val.type() == QVariant::ULongLong || val.type() == QVariant::LongLong) {
+        if (fmt == "string") {
+            return QVariant(val.toString());
+        }
+    }
+    return val;
+}
+
+} // end of anonymous namespace
 
 /*!
 \brief QSqlDatabase wrapper.
@@ -352,10 +433,249 @@ public:
       return res.scalar();
    }
 
+   /**
+     * @brief 以事务的方式在线程中执行一组SQL操作
+     * @code
+     * magic([
+     *   { "type": "insert", "param": { "table": "xx", "data": {} } },
+     *   { "type": "batch_insert", "param": { "table": "xx", "fields": ["x", "y", "z"], data: [] } },
+     *   { "type": "update", "param": { "table": "xx", "where": "", data: {} } },
+     *   { "type": "delete", "param": { "table": "xx", "where": "" } },
+     *   { "type": "select", "param": { "sql": "" } },
+     *   { "type": "select1", "param": { "sql": "" } },
+     *   { "type": "select_value", "param": { "sql": "" } },
+     *   { "type": "exec", "param": { "sql": "" } },
+     *   { "type": "batch_exec", "param": { "sql": "", data: [ [], ] } }
+     * ])
+     * @remarks
+     * 1. 若需要拿某一个条目的返回值(例如lastInertId),可以使用${0}拿到某一条目的返回值，其中0为第0个步骤的执行结果
+     * magic([
+     *   { "type": "insert", "param": { "table": "gwm_partnumber", "data": {} } },
+     *   { "type": "batch_insert", "param": { "magic": "replace_value", "table": "xx", "fields": [], data: [ { "partnumber_id": "${0}" } ] } },
+     * ])
+     * 2. batch_insert时支持使用$ALL{0}替换data数据，其中0为第0个步骤的执行结果
+     * magic([
+     *   { "type": "select", "param": { "sql": "" } },
+     *   { "type": "batch_insert", "param": { "table": "xx", data: "$ALL{0}" } }
+     * ])
+     * 3. batch_insert支持remove_keys和update_map
+     * remove_keys：移除掉data中的key
+     * update_map: 更新data中的值
+     * @endcode
+     */
+   QVariant magic(const QVariantList &v)
+   {
+      QVariantList stepData;
+
+      static QRegularExpression replaceValueRegex("\\$\\{(\\d+)\\}");
+      static QRegularExpression trueCondRegex("\\$\\{(\\d+)\\}");
+      static QRegularExpression falseCondRegex("!\\$\\{(\\d+)\\}");
+
+      std::function<void(QString &)> replaceStrFunc;
+      replaceStrFunc = [&stepData](QString &str) {
+          while (true) {
+              auto match = replaceValueRegex.match(str);
+              if (match.hasMatch()) {
+                  int stepIndex = match.captured(1).toInt();
+                  str.replace(match.captured(0), stepData.at(stepIndex).toString());
+              } else {
+                  break;
+              }
+          }
+      };
+
+      std::function<void(QVariantMap &)> replaceVarMapFunc;
+      replaceVarMapFunc = [&replaceStrFunc, &stepData](QVariantMap &m){
+          for (auto iter = m.begin(); iter != m.end(); iter++) {
+              if (iter.value().type() == QVariant::String) {
+                  QString str = iter.value().toString();
+                  replaceStrFunc(str);
+                  iter->setValue(str);
+              }
+          }
+      };
+      auto replaceVarListFunc = [&replaceVarMapFunc, &stepData](QVariantList &list){
+          for (auto & i : list) {
+              QVariantMap iMap = i.toMap();
+              replaceVarMapFunc(iMap);
+              i = iMap;
+          }
+      };
+
+      foreach (const auto &i, v) {
+         QVariantMap iMap = i.toMap();
+         const QString cond = iMap.value("cond").toString();
+         const QString type = iMap.value("type").toString();
+         const QVariantMap param = iMap.value("param").toMap();
+         const QString magicStrategy = param.value("magic").toString();
+         const QVariantMap formatMap = param.value("format").toMap();
+
+         if (!cond.isEmpty()) {
+            // 若cond有值，检查是否要执行此SQL
+            auto match1 = trueCondRegex.match(cond);
+            auto match2 = falseCondRegex.match(cond);
+            if (match1.hasMatch()) {
+                    int stepIndex = match1.captured(1).toInt();
+                    if (stepIndex < stepData.count()) {
+                        if (!stepData.at(stepIndex).toBool()) {
+                            stepData.push_back(QVariant());
+                            continue;
+                        }
+                    }
+            }
+            if (match2.hasMatch()) {
+                    int stepIndex = match2.captured(1).toInt();
+                    if (stepIndex < stepData.count()) {
+                        if (stepData.at(stepIndex).toBool()) {
+                            stepData.push_back(QVariant());
+                            continue;
+                        }
+                    }
+            }
+         }
+
+         if (type == "insert") {
+            QString table = param.value("table").toString();
+            QVariantMap data = param.value("data").toMap();
+            if (magicStrategy == "replace_value") {
+                    replaceVarMapFunc(data);
+            }
+            NonQueryResult res = insertInto(table).exec2(data);
+            stepData.push_back(res.lastInsertId());
+         } else if (type == "batch_insert") {
+            QString table = param.value("table").toString();
+            QVariantList data;
+            QVariant::Type dataType = param.value("data").type();
+            if (dataType == QVariant::String) {
+                    QString temp = param.value("data").toString();
+                    static QRegularExpression re("\\$ALL\\{(\\d+)\\}");
+                    auto match = re.match(temp);
+                    if (match.hasMatch()) {
+                        int stepIndex = match.captured(1).toInt();
+                        if (stepIndex < stepData.count()) {
+                            data = stepData.at(stepIndex).toList();
+                        }
+                    }
+            } else {
+                    data = param.value("data").toList();
+            }
+            if (data.isEmpty()) {
+                    stepData.push_back(0);
+                    continue;
+            }
+            QStringList removeKeys = param.value("remove_keys").toStringList();
+            if (!removeKeys.isEmpty()) {
+                    for (auto & i : data) {
+                        QVariantMap iMap = i.toMap();
+                        foreach (const auto & k, removeKeys) {
+                            iMap.remove(k);
+                        }
+                        i  = iMap;
+                    }
+            }
+            QVariantMap updateMap = param.value("update_map").toMap();
+            if (!updateMap.isEmpty()) {
+                    for (auto & i : data) {
+                        QVariantMap iMap = i.toMap();
+                        for (auto iter = updateMap.begin(); iter != updateMap.end(); iter++) {
+                            iMap.insert(iter.key(), iter.value());
+                        }
+                        i  = iMap;
+                    }
+            }
+            if (magicStrategy == "replace_value") {
+                    replaceVarListFunc(data);
+            }
+            QStringList fields = param.value("fields").toStringList();
+            if (fields.isEmpty()) {
+                    fields = data.first().toMap().keys();
+            }
+            NonQueryResult res = insertInto(table).exec3(fields, data);
+            stepData.push_back(res.numRowsAffected());
+         } else if (type == "update") {
+            QString table = param.value("table").toString();
+            QString where = param.value("where").toString();
+            QVariantMap data = param.value("data").toMap();
+            if (magicStrategy == "replace_value") {
+                    replaceVarMapFunc(data);
+                    replaceStrFunc(where);
+            }
+            if (where.isEmpty()) {
+                    where = "1=0";
+            }
+            NonQueryResult res = update(table).set(data).where(where);
+            stepData.push_back(res.numRowsAffected());
+         } else if (type == "delete") {
+            QString table = param.value("table").toString();
+            QString where = param.value("where").toString();
+            if (magicStrategy == "replace_value") {
+                    replaceStrFunc(where);
+            }
+            if (where.isEmpty()) {
+                    where = "1=0";
+            }
+            NonQueryResult res = deleteFrom(table).where(where);
+            stepData.push_back(res.numRowsAffected());
+         } else if (type == "select") {
+            QString sql = param.value("sql").toString();
+            if (magicStrategy == "replace_value") {
+                    replaceStrFunc(sql);
+            }
+            QueryResult res = execQuery(sql);
+            QVariantList tableData;
+            while (res.next()) {
+                    QVariantMap tmp = res.toMap();
+                    for (auto iter = tmp.begin(); iter != tmp.end(); iter++) {
+                        iter->setValue(formatSqlValue(iter.value(), formatMap.value(iter.key()).toString()));
+                    }
+                    tableData.push_back(tmp);
+            }
+            stepData.push_back(tableData);
+         } else if (type == "select1") {
+            QString sql = param.value("sql").toString();
+            if (magicStrategy == "replace_value") {
+                    replaceStrFunc(sql);
+            }
+            QueryResult res = execQuery(sql);
+            QVariantMap data;
+            if (res.next()) {
+                    data = res.toMap();
+                    for (auto iter = data.begin(); iter != data.end(); iter++) {
+                        iter->setValue(formatSqlValue(iter.value(), formatMap.value(iter.key()).toString()));
+                    }
+            }
+            stepData.push_back(data);
+         } else if (type == "select_value") {
+            QString sql = param.value("sql").toString();
+            if (magicStrategy == "replace_value") {
+                    replaceStrFunc(sql);
+            }
+            QueryResult res = execQuery(sql);
+            QVariant data;
+            if (res.next()) {
+                    data = formatSqlValue(res.value(0), param.value("format").toString());
+            }
+            stepData.push_back(data);
+         } else if (type == "exec") {
+            QString sql = param.value("sql").toString();
+            if (magicStrategy == "replace_value") {
+                    replaceStrFunc(sql);
+            }
+            NonQueryResult res = execNonQuery(sql);
+            stepData.push_back(res.numRowsAffected());
+         } else if (type == "batch_exec") {
+            QString sql = param.value("sql").toString();
+            QVariantList data = param.value("data").toList();
+            NonQueryResult res = execNonQuery_batch(sql, data);
+            stepData.push_back(res.numRowsAffected());
+         }
+      }
+      return stepData.last();
+   }
+
 protected:
    QSqlDatabase m_db;
 };
-
 
 /*!
 \brief QSqlDatabase transaction wrapper.

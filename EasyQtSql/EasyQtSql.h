@@ -33,7 +33,7 @@
 To use all the EasyQtSql features just include this header file into your project
 \warning Please use EasyQtSql.h file only! You should never include any of EasyQtSql_*.h files.
 */
-
+#include <functional>
 #include <QtSql>
 
 /*!
