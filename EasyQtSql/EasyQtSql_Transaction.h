@@ -40,6 +40,15 @@
 
 namespace {
 
+static QString var2str(const QVariant &v)
+{
+    if (v.type() == QVariant::Map || v.type() == QVariant::List || v.type() == QVariant::StringList) {
+        return QJsonDocument::fromVariant(v).toJson(QJsonDocument::Compact);
+    } else {
+        return v.toString();
+    }
+}
+
 static QVariant str2var(const QString &str)
 {
     QJsonParseError err;
@@ -147,173 +156,173 @@ void test()
 */
 class Database
 {
-   Q_DISABLE_COPY(Database)
+    Q_DISABLE_COPY(Database)
 
 public:
 
-   /*!
+    /*!
     * \param db QSqlDatabase to use
     *
     * Creates an Database object, tries to open <em>db</em> connection if not opened.
     *
     * \throws DBException
     */
-   explicit Database (const QSqlDatabase &db = QSqlDatabase())
-   {
-      m_db = db.isValid() ? db : QSqlDatabase::database();
+    explicit Database (const QSqlDatabase &db = QSqlDatabase())
+    {
+        m_db = db.isValid() ? db : QSqlDatabase::database();
 
-      if (!m_db.isOpen())
-      {
-         if (!m_db.open())
-         {
-            #ifdef DB_EXCEPTIONS_ENABLED
-            throw DBException(m_db);
-            #endif
-         }
-      }
-   }
+        if (!m_db.isOpen())
+        {
+            if (!m_db.open())
+            {
+#ifdef DB_EXCEPTIONS_ENABLED
+                throw DBException(m_db);
+#endif
+            }
+        }
+    }
 
-   Database(Database&& other)
-   {
-      m_db = other.m_db;
-      other.m_db = QSqlDatabase();
-   }
+    Database(Database&& other)
+    {
+        m_db = other.m_db;
+        other.m_db = QSqlDatabase();
+    }
 
-   Database& operator=(Database&& other)
-   {
-      if (this == &other) return *this;
+    Database& operator=(Database&& other)
+    {
+        if (this == &other) return *this;
 
-      m_db = other.m_db;
-      other.m_db = QSqlDatabase();
+        m_db = other.m_db;
+        other.m_db = QSqlDatabase();
 
-      return *this;
-   }
+        return *this;
+    }
 
-   /*!
+    /*!
     * \brief Returns information about the last error that occurred on the underlying database.
     */
-   QSqlError lastError() const
-   {
-      return m_db.lastError();
-   }
+    QSqlError lastError() const
+    {
+        return m_db.lastError();
+    }
 
-   /*!
+    /*!
    \brief Executes non-query SQL statement (DELETE, INSERT, UPDATE, CREATE, ALTER, etc.)
    \param query SQL statement string
    \throws DBException
    */
-   NonQueryResult execNonQuery(const QString &sql) const
-   {
-      QSqlQuery q = m_db.exec(sql);
+    NonQueryResult execNonQuery(const QString &sql) const
+    {
+        QSqlQuery q = m_db.exec(sql);
 
 #ifdef DB_EXCEPTIONS_ENABLED
 
-      QSqlError lastError = q.lastError();
+        QSqlError lastError = q.lastError();
 
-      if (lastError.isValid())
-         throw DBException(q);
+        if (lastError.isValid())
+            throw DBException(q);
 
 #endif
 
-      return NonQueryResult(q);
-   }
+        return NonQueryResult(q);
+    }
 
-   NonQueryResult execNonQuery_batch(const QString &sql, const QVariantList &data) const
-   {
-      QSqlQuery q(m_db);
-      q.prepare(sql);
-      foreach (const QVariant &i, data) {
-         q.addBindValue(i.toList());
-      }
-      q.execBatch();
+    NonQueryResult execNonQuery_batch(const QString &sql, const QVariantList &data) const
+    {
+        QSqlQuery q(m_db);
+        q.prepare(sql);
+        foreach (const QVariant &i, data) {
+            q.addBindValue(i.toList());
+        }
+        q.execBatch();
 
 #ifdef DB_EXCEPTIONS_ENABLED
 
-      QSqlError lastError = q.lastError();
+        QSqlError lastError = q.lastError();
 
-      if (lastError.isValid())
-         throw DBException(q);
+        if (lastError.isValid())
+            throw DBException(q);
 
 #endif
 
-      return NonQueryResult(q);
-   }
+        return NonQueryResult(q);
+    }
 
-   /*!
+    /*!
    \brief Executes SELECT query
    \param query SQL statement string
    \throws DBException
    */
-   QueryResult execQuery(const QString &sql) const
-   {
-      QSqlQuery q = m_db.exec(sql);
+    QueryResult execQuery(const QString &sql) const
+    {
+        QSqlQuery q = m_db.exec(sql);
 
 #ifdef DB_EXCEPTIONS_ENABLED
 
-      QSqlError lastError = q.lastError();
+        QSqlError lastError = q.lastError();
 
-      if (lastError.isValid())
-         throw DBException(q);
+        if (lastError.isValid())
+            throw DBException(q);
 
 #endif
 
-      return QueryResult(q);
-   }
+        return QueryResult(q);
+    }
 
-   /*!
+    /*!
    \brief Creates INSERT query wrapper
    \param table Table to insert into with list of columns
    */
-   InsertQuery insertInto(const QString &table) const
-   {
-      InsertQuery query(table, m_db);
+    InsertQuery insertInto(const QString &table) const
+    {
+        InsertQuery query(table, m_db);
 
-      return query;
-   }
+        return query;
+    }
 
-   /*!
+    /*!
    \brief Creates DELETE query wrapper
    \param table Table to delete from
    */
-   DeleteQuery deleteFrom(const QString &table) const
-   {
-      DeleteQuery query(table, m_db);
+    DeleteQuery deleteFrom(const QString &table) const
+    {
+        DeleteQuery query(table, m_db);
 
-      return query;
-   }
+        return query;
+    }
 
-   /*!
+    /*!
    \brief Creates UPDATE query wrapper
    \param table Table to update
    */
-   UpdateQuery update(const QString &table) const
-   {
-      UpdateQuery query(table, m_db);
+    UpdateQuery update(const QString &table) const
+    {
+        UpdateQuery query(table, m_db);
 
-      return query;
-   }
+        return query;
+    }
 
-   /*!
+    /*!
    \brief Prepares SQL statement
    \param sql SQL statement string
    \param forwardOnly Configure underlying QSqlQuery as forwardOnly
    */
-   PreparedQuery prepare(const QString &sql, bool forwardOnly = true) const
-   {
-      PreparedQuery query(sql, m_db, forwardOnly);
+    PreparedQuery prepare(const QString &sql, bool forwardOnly = true) const
+    {
+        PreparedQuery query(sql, m_db, forwardOnly);
 
-      return query;
-   }
+        return query;
+    }
 
-   /*!
+    /*!
     * \brief Returns a reference to the wrapped QSqlDatabase object
     */
-   QSqlDatabase &qSqlDatabase()
-   {
-      return m_db;
-   }
+    QSqlDatabase &qSqlDatabase()
+    {
+        return m_db;
+    }
 
-   /*!
+    /*!
     \brief Executes <em>query</em> and applies function <em>f</em> to each result row.
     \param query SQL query string (SELECT statement)
     \param f Function (lambda) to apply to
@@ -327,15 +336,15 @@ public:
     });
     \endcode
     */
-   template<typename Func>
-   int each (const QString &query, Func&& f) const
-   {
-      QueryResult res = execQuery(query);
+    template<typename Func>
+    int each (const QString &query, Func&& f) const
+    {
+        QueryResult res = execQuery(query);
 
-      return Util::each(res, f);
-   }
+        return Util::each(res, f);
+    }
 
-   /*!
+    /*!
     \brief Executes <em>query</em> and applies function <em>f</em> to the first result row.
     \param query SQL query string (SELECT statement)
     \param f Function (lambda) to apply to
@@ -349,15 +358,15 @@ public:
     });
     \endcode
     */
-   template<typename Func>
-   int first (const QString &query, Func&& f) const
-   {
-      QueryResult res = execQuery(query);
+    template<typename Func>
+    int first (const QString &query, Func&& f) const
+    {
+        QueryResult res = execQuery(query);
 
-      return Util::first(res, f);
-   }
+        return Util::first(res, f);
+    }
 
-   /*!
+    /*!
     \brief Executes <em>query</em> and applies function <em>f</em> to <em>count</em> result rows starting from index <em>start</em>.
     \param query SQL query string (SELECT statement)
     \param start Start index
@@ -373,15 +382,15 @@ public:
     });
     \endcode
     */
-   template<typename Func>
-   int range(const QString &query, int start, int count, Func&& f) const
-   {
-      QueryResult res = execQuery(query);
+    template<typename Func>
+    int range(const QString &query, int start, int count, Func&& f) const
+    {
+        QueryResult res = execQuery(query);
 
-      return Util::range(res, start, count, f);
-   }
+        return Util::range(res, start, count, f);
+    }
 
-   /*!
+    /*!
     \brief Executes <em>query</em> and applies function <em>f</em> to <em>topCount</em> result rows.
     \param query SQL query string (SELECT statement)
     \param topCount Row count to handle
@@ -396,44 +405,44 @@ public:
     });
     \endcode
     */
-   template<typename Func>
-   int top(const QString &query, int topCount, Func&& f) const
-   {
-      QueryResult res = execQuery(query);
+    template<typename Func>
+    int top(const QString &query, int topCount, Func&& f) const
+    {
+        QueryResult res = execQuery(query);
 
-      return Util::top(res, topCount, f);
-   }
+        return Util::top(res, topCount, f);
+    }
 
-   /*!
+    /*!
     \brief Executes <em>query</em> and returns scalar value converted to T.
     \param query SQL query string (SELECT statement)
     \sa QueryResult::scalar
     */
-   template<typename T>
-   T scalar(const QString &query) const
-   {
-      QueryResult res = execQuery(query);
+    template<typename T>
+    T scalar(const QString &query) const
+    {
+        QueryResult res = execQuery(query);
 
-      res.next();
+        res.next();
 
-      return res.scalar<T>();
-   }
+        return res.scalar<T>();
+    }
 
-   /*!
+    /*!
     \brief Executes <em>query</em> and returns scalar value.
     \param query SQL query string (SELECT statement)
     \sa QueryResult::scalar
     */
-   QVariant scalar(const QString &query) const
-   {
-      QueryResult res = execQuery(query);
+    QVariant scalar(const QString &query) const
+    {
+        QueryResult res = execQuery(query);
 
-      res.next();
+        res.next();
 
-      return res.scalar();
-   }
+        return res.scalar();
+    }
 
-   /**
+    /**
      * @brief 以事务的方式在线程中执行一组SQL操作
      * @code
      * magic([
@@ -463,58 +472,58 @@ public:
      * update_map: 更新data中的值
      * @endcode
      */
-   QVariant magic(const QVariantList &v)
-   {
-      QVariantList stepData;
+    QVariant magic(const QVariantList &v, bool showDebugInfo = false)
+    {
+        QVariantList stepData;
 
-      static QRegularExpression replaceValueRegex("\\$\\{(\\d+)\\}");
-      static QRegularExpression trueCondRegex("\\$\\{(\\d+)\\}");
-      static QRegularExpression falseCondRegex("!\\$\\{(\\d+)\\}");
+        static QRegularExpression replaceValueRegex("\\$\\{(\\d+)\\}");
+        static QRegularExpression trueCondRegex("\\$\\{(\\d+)\\}");
+        static QRegularExpression falseCondRegex("!\\$\\{(\\d+)\\}");
 
-      std::function<void(QString &)> replaceStrFunc;
-      replaceStrFunc = [&stepData](QString &str) {
-          while (true) {
-              auto match = replaceValueRegex.match(str);
-              if (match.hasMatch()) {
-                  int stepIndex = match.captured(1).toInt();
-                  str.replace(match.captured(0), stepData.at(stepIndex).toString());
-              } else {
-                  break;
-              }
-          }
-      };
+        std::function<void(QString &)> replaceStrFunc;
+        replaceStrFunc = [&stepData](QString &str) {
+            while (true) {
+                auto match = replaceValueRegex.match(str);
+                if (match.hasMatch()) {
+                    int stepIndex = match.captured(1).toInt();
+                    str.replace(match.captured(0), stepData.at(stepIndex).toString());
+                } else {
+                    break;
+                }
+            }
+        };
 
-      std::function<void(QVariantMap &)> replaceVarMapFunc;
-      replaceVarMapFunc = [&replaceStrFunc, &stepData](QVariantMap &m){
-          for (auto iter = m.begin(); iter != m.end(); iter++) {
-              if (iter.value().type() == QVariant::String) {
-                  QString str = iter.value().toString();
-                  replaceStrFunc(str);
-                  iter->setValue(str);
-              }
-          }
-      };
-      auto replaceVarListFunc = [&replaceVarMapFunc, &stepData](QVariantList &list){
-          for (auto & i : list) {
-              QVariantMap iMap = i.toMap();
-              replaceVarMapFunc(iMap);
-              i = iMap;
-          }
-      };
+        std::function<void(QVariantMap &)> replaceVarMapFunc;
+        replaceVarMapFunc = [&replaceStrFunc, &stepData](QVariantMap &m){
+            for (auto iter = m.begin(); iter != m.end(); iter++) {
+                if (iter.value().type() == QVariant::String) {
+                    QString str = iter.value().toString();
+                    replaceStrFunc(str);
+                    iter->setValue(str);
+                }
+            }
+        };
+        auto replaceVarListFunc = [&replaceVarMapFunc, &stepData](QVariantList &list){
+            for (auto & i : list) {
+                QVariantMap iMap = i.toMap();
+                replaceVarMapFunc(iMap);
+                i = iMap;
+            }
+        };
+        int index = 0;
+        foreach (const auto &i, v) {
+            QVariantMap iMap = i.toMap();
+            const QString cond = iMap.value("cond").toString();
+            const QString type = iMap.value("type").toString();
+            const QVariantMap param = iMap.value("param").toMap();
+            const QString magicStrategy = param.value("magic").toString();
+            const QVariantMap formatMap = param.value("format").toMap();
 
-      foreach (const auto &i, v) {
-         QVariantMap iMap = i.toMap();
-         const QString cond = iMap.value("cond").toString();
-         const QString type = iMap.value("type").toString();
-         const QVariantMap param = iMap.value("param").toMap();
-         const QString magicStrategy = param.value("magic").toString();
-         const QVariantMap formatMap = param.value("format").toMap();
-
-         if (!cond.isEmpty()) {
-            // 若cond有值，检查是否要执行此SQL
-            auto match1 = trueCondRegex.match(cond);
-            auto match2 = falseCondRegex.match(cond);
-            if (match1.hasMatch()) {
+            if (!cond.isEmpty()) {
+                // 若cond有值，检查是否要执行此SQL
+                auto match1 = trueCondRegex.match(cond);
+                auto match2 = falseCondRegex.match(cond);
+                if (match1.hasMatch()) {
                     int stepIndex = match1.captured(1).toInt();
                     if (stepIndex < stepData.count()) {
                         if (!stepData.at(stepIndex).toBool()) {
@@ -522,8 +531,8 @@ public:
                             continue;
                         }
                     }
-            }
-            if (match2.hasMatch()) {
+                }
+                if (match2.hasMatch()) {
                     int stepIndex = match2.captured(1).toInt();
                     if (stepIndex < stepData.count()) {
                         if (stepData.at(stepIndex).toBool()) {
@@ -531,22 +540,28 @@ public:
                             continue;
                         }
                     }
+                }
             }
-         }
-
-         if (type == "insert") {
-            QString table = param.value("table").toString();
-            QVariantMap data = param.value("data").toMap();
-            if (magicStrategy == "replace_value") {
+            if (showDebugInfo) {
+                qDebug().noquote() << "[MAGIC^] index:" << index << "type:" << type;
+            }
+            if (type == "insert") {
+                QString table = param.value("table").toString();
+                QVariantMap data = param.value("data").toMap();
+                if (magicStrategy == "replace_value") {
                     replaceVarMapFunc(data);
-            }
-            NonQueryResult res = insertInto(table).exec2(data);
-            stepData.push_back(res.lastInsertId());
-         } else if (type == "batch_insert") {
-            QString table = param.value("table").toString();
-            QVariantList data;
-            QVariant::Type dataType = param.value("data").type();
-            if (dataType == QVariant::String) {
+                }
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[TABLE]" << table;
+                    qDebug().noquote() << "[DATA]" << var2str(data);
+                }
+                NonQueryResult res = insertInto(table).exec2(data);
+                stepData.push_back(res.lastInsertId());
+            } else if (type == "batch_insert") {
+                QString table = param.value("table").toString();
+                QVariantList data;
+                QVariant::Type dataType = param.value("data").type();
+                if (dataType == QVariant::String) {
                     QString temp = param.value("data").toString();
                     static QRegularExpression re("\\$ALL\\{(\\d+)\\}");
                     auto match = re.match(temp);
@@ -556,15 +571,15 @@ public:
                             data = stepData.at(stepIndex).toList();
                         }
                     }
-            } else {
+                } else {
                     data = param.value("data").toList();
-            }
-            if (data.isEmpty()) {
+                }
+                if (data.isEmpty()) {
                     stepData.push_back(0);
                     continue;
-            }
-            QStringList removeKeys = param.value("remove_keys").toStringList();
-            if (!removeKeys.isEmpty()) {
+                }
+                QStringList removeKeys = param.value("remove_keys").toStringList();
+                if (!removeKeys.isEmpty()) {
                     for (auto & i : data) {
                         QVariantMap iMap = i.toMap();
                         foreach (const auto & k, removeKeys) {
@@ -572,9 +587,9 @@ public:
                         }
                         i  = iMap;
                     }
-            }
-            QVariantMap updateMap = param.value("update_map").toMap();
-            if (!updateMap.isEmpty()) {
+                }
+                QVariantMap updateMap = param.value("update_map").toMap();
+                if (!updateMap.isEmpty()) {
                     for (auto & i : data) {
                         QVariantMap iMap = i.toMap();
                         for (auto iter = updateMap.begin(); iter != updateMap.end(); iter++) {
@@ -582,99 +597,129 @@ public:
                         }
                         i  = iMap;
                     }
-            }
-            if (magicStrategy == "replace_value") {
+                }
+                if (magicStrategy == "replace_value") {
                     replaceVarListFunc(data);
-            }
-            QStringList fields = param.value("fields").toStringList();
-            if (fields.isEmpty()) {
+                }
+                QStringList fields = param.value("fields").toStringList();
+                if (fields.isEmpty()) {
                     fields = data.first().toMap().keys();
-            }
-            NonQueryResult res = insertInto(table).exec3(fields, data);
-            stepData.push_back(res.numRowsAffected());
-         } else if (type == "update") {
-            QString table = param.value("table").toString();
-            QString where = param.value("where").toString();
-            QVariantMap data = param.value("data").toMap();
-            if (magicStrategy == "replace_value") {
+                }
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[TABLE]" << table;
+                    qDebug().noquote() << "[FIELDS]" << var2str(fields);
+                    qDebug().noquote() << "[DATA]" << var2str(data);
+                }
+                NonQueryResult res = insertInto(table).exec3(fields, data);
+                stepData.push_back(res.numRowsAffected());
+            } else if (type == "update") {
+                QString table = param.value("table").toString();
+                QString where = param.value("where").toString();
+                QVariantMap data = param.value("data").toMap();
+                if (magicStrategy == "replace_value") {
                     replaceVarMapFunc(data);
                     replaceStrFunc(where);
-            }
-            if (where.isEmpty()) {
+                }
+                if (where.isEmpty()) {
                     where = "1=0";
-            }
-            NonQueryResult res = update(table).set(data).where(where);
-            stepData.push_back(res.numRowsAffected());
-         } else if (type == "delete") {
-            QString table = param.value("table").toString();
-            QString where = param.value("where").toString();
-            if (magicStrategy == "replace_value") {
+                }
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[TABLE]" << table;
+                    qDebug().noquote() << "[WHERE]" << where;
+                    qDebug().noquote() << "[DATA]" << var2str(data);
+                }
+                NonQueryResult res = update(table).set(data).where(where);
+                stepData.push_back(res.numRowsAffected());
+            } else if (type == "delete") {
+                QString table = param.value("table").toString();
+                QString where = param.value("where").toString();
+                if (magicStrategy == "replace_value") {
                     replaceStrFunc(where);
-            }
-            if (where.isEmpty()) {
+                }
+                if (where.isEmpty()) {
                     where = "1=0";
-            }
-            NonQueryResult res = deleteFrom(table).where(where);
-            stepData.push_back(res.numRowsAffected());
-         } else if (type == "select") {
-            QString sql = param.value("sql").toString();
-            if (magicStrategy == "replace_value") {
+                }
+                NonQueryResult res = deleteFrom(table).where(where);
+                stepData.push_back(res.numRowsAffected());
+            } else if (type == "select") {
+                QString sql = param.value("sql").toString();
+                if (magicStrategy == "replace_value") {
                     replaceStrFunc(sql);
-            }
-            QueryResult res = execQuery(sql);
-            QVariantList tableData;
-            while (res.next()) {
+                }
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[SQL]" << sql;
+                }
+                QueryResult res = execQuery(sql);
+                QVariantList tableData;
+                while (res.next()) {
                     QVariantMap tmp = res.toMap();
                     for (auto iter = tmp.begin(); iter != tmp.end(); iter++) {
                         iter->setValue(formatSqlValue(iter.value(), formatMap.value(iter.key()).toString()));
                     }
                     tableData.push_back(tmp);
-            }
-            stepData.push_back(tableData);
-         } else if (type == "select1") {
-            QString sql = param.value("sql").toString();
-            if (magicStrategy == "replace_value") {
+                }
+                stepData.push_back(tableData);
+            } else if (type == "select1") {
+                QString sql = param.value("sql").toString();
+                if (magicStrategy == "replace_value") {
                     replaceStrFunc(sql);
-            }
-            QueryResult res = execQuery(sql);
-            QVariantMap data;
-            if (res.next()) {
+                }
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[SQL]" << sql;
+                }
+                QueryResult res = execQuery(sql);
+                QVariantMap data;
+                if (res.next()) {
                     data = res.toMap();
                     for (auto iter = data.begin(); iter != data.end(); iter++) {
                         iter->setValue(formatSqlValue(iter.value(), formatMap.value(iter.key()).toString()));
                     }
-            }
-            stepData.push_back(data);
-         } else if (type == "select_value") {
-            QString sql = param.value("sql").toString();
-            if (magicStrategy == "replace_value") {
+                }
+                stepData.push_back(data);
+            } else if (type == "select_value") {
+                QString sql = param.value("sql").toString();
+                if (magicStrategy == "replace_value") {
                     replaceStrFunc(sql);
-            }
-            QueryResult res = execQuery(sql);
-            QVariant data;
-            if (res.next()) {
+                }
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[SQL]" << sql;
+                }
+                QueryResult res = execQuery(sql);
+                QVariant data;
+                if (res.next()) {
                     data = formatSqlValue(res.value(0), param.value("format").toString());
-            }
-            stepData.push_back(data);
-         } else if (type == "exec") {
-            QString sql = param.value("sql").toString();
-            if (magicStrategy == "replace_value") {
+                }
+                stepData.push_back(data);
+            } else if (type == "exec") {
+                QString sql = param.value("sql").toString();
+                if (magicStrategy == "replace_value") {
                     replaceStrFunc(sql);
+                }
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[SQL]" << sql;
+                }
+                NonQueryResult res = execNonQuery(sql);
+                stepData.push_back(res.numRowsAffected());
+            } else if (type == "batch_exec") {
+                QString sql = param.value("sql").toString();
+                QVariantList data = param.value("data").toList();
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[SQL]" << sql;
+                    qDebug().noquote() << "[DATA]" << var2str(data);
+                }
+                NonQueryResult res = execNonQuery_batch(sql, data);
+                stepData.push_back(res.numRowsAffected());
             }
-            NonQueryResult res = execNonQuery(sql);
-            stepData.push_back(res.numRowsAffected());
-         } else if (type == "batch_exec") {
-            QString sql = param.value("sql").toString();
-            QVariantList data = param.value("data").toList();
-            NonQueryResult res = execNonQuery_batch(sql, data);
-            stepData.push_back(res.numRowsAffected());
-         }
-      }
-      return stepData.last();
-   }
+            if (showDebugInfo) {
+                qDebug().noquote() << "[MAGIC$] index:" << index << "result:" << var2str(stepData);
+            }
+            index++;
+        }
+        return stepData.last();
+    }
 
 protected:
-   QSqlDatabase m_db;
+    QSqlDatabase m_db;
 };
 
 /*!
@@ -738,115 +783,115 @@ void test()
 */
 class  Transaction : public Database
 {
-   Q_DISABLE_COPY(Transaction)
+    Q_DISABLE_COPY(Transaction)
 
 public:
 
-   explicit Transaction (const QSqlDatabase &db = QSqlDatabase())
-     : Database(db)
-     , m_commited(false)
-     , m_started(false)
-   {      
-      m_started = m_db.transaction();
+    explicit Transaction (const QSqlDatabase &db = QSqlDatabase())
+        : Database(db)
+        , m_commited(false)
+        , m_started(false)
+    {
+        m_started = m_db.transaction();
 
-      #ifdef DB_EXCEPTIONS_ENABLED
-      if (!m_started)
-      {
-         throw DBException(m_db);
-      }
-      #endif
-   }
+#ifdef DB_EXCEPTIONS_ENABLED
+        if (!m_started)
+        {
+            throw DBException(m_db);
+        }
+#endif
+    }
 
-   Transaction (Transaction&& other)
-      : Database(std::move(other))
-   {
-      m_commited = other.m_commited;
-      m_started  = other.m_started;
+    Transaction (Transaction&& other)
+        : Database(std::move(other))
+    {
+        m_commited = other.m_commited;
+        m_started  = other.m_started;
 
-      other.m_commited = false;
-      other.m_started  = false;
-   }
+        other.m_commited = false;
+        other.m_started  = false;
+    }
 
-   Transaction& operator=(Transaction&& other)
-   {
-      m_started  = other.m_started;
-      m_commited = other.m_commited;
+    Transaction& operator=(Transaction&& other)
+    {
+        m_started  = other.m_started;
+        m_commited = other.m_commited;
 
-      other.m_commited = false;
-      other.m_started  = false;
+        other.m_commited = false;
+        other.m_started  = false;
 
-      return static_cast<Transaction&>(Database::operator=(std::move(other)));
-   }
+        return static_cast<Transaction&>(Database::operator=(std::move(other)));
+    }
 
-   ~Transaction()
-   {
-      if (m_db.isValid() && !m_commited)
-      {
-         m_db.rollback();
-      }
-   }
+    ~Transaction()
+    {
+        if (m_db.isValid() && !m_commited)
+        {
+            m_db.rollback();
+        }
+    }
 
-   /*!
+    /*!
    \brief Commits transaction
 
    The transaction will be rolled back on calling the destructor if not explicitly commited
 
    \throws DBException
    */
-   bool commit()
-   {
-      if (m_db.isValid() && !m_commited)
-      {
-         m_commited = m_db.commit();
+    bool commit()
+    {
+        if (m_db.isValid() && !m_commited)
+        {
+            m_commited = m_db.commit();
 
 #ifdef DB_EXCEPTIONS_ENABLED
 
-         if (!m_commited)
-            throw DBException(m_db);
+            if (!m_commited)
+                throw DBException(m_db);
 
 #endif
 
-      }
+        }
 
-      return m_commited;
-   }
+        return m_commited;
+    }
 
-   /*!
+    /*!
    \brief Rolls back transaction
    */
-   bool rollback()
-   {
-      bool res = false;
+    bool rollback()
+    {
+        bool res = false;
 
-      if (m_db.isValid() && !m_commited)
-      {
-         res = m_db.rollback();
+        if (m_db.isValid() && !m_commited)
+        {
+            res = m_db.rollback();
 
-         m_commited = false;
-      }
+            m_commited = false;
+        }
 
-      return res;
-   }
+        return res;
+    }
 
-   /*!
+    /*!
    \brief Returns true if the transaction has been started successfully. Otherwise it returns false.
    */
-   bool started() const
-   {
-      return m_started;
-   }
+    bool started() const
+    {
+        return m_started;
+    }
 
-   /*!
+    /*!
    \brief Returns true if the transaction has been commited successfully. Otherwise it returns false.
    */
-   bool commited() const
-   {
-      return m_commited;
-   }
+    bool commited() const
+    {
+        return m_commited;
+    }
 
-private:   
-   bool m_commited = false;
-   bool m_started = false;   
+private:
+    bool m_commited = false;
+    bool m_started = false;
 };
 
 #endif // EASYQTSQL_TRANSACTION_H
