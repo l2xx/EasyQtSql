@@ -477,8 +477,8 @@ public:
         QVariantList stepData;
 
         static QRegularExpression replaceValueRegex("\\$\\{(\\d+)\\}");
-        static QRegularExpression trueCondRegex("\\$\\{(\\d+)\\}");
-        static QRegularExpression falseCondRegex("!\\$\\{(\\d+)\\}");
+        static QRegularExpression trueCondRegex("^\\$\\{(\\d+)\\}$");
+        static QRegularExpression falseCondRegex("^!\\$\\{(\\d+)\\}$");
 
         std::function<void(QString &)> replaceStrFunc;
         replaceStrFunc = [&stepData](QString &str) {
@@ -510,8 +510,9 @@ public:
                 i = iMap;
             }
         };
-        int index = 0;
+        int index = -1;
         foreach (const auto &i, v) {
+            index++;
             QVariantMap iMap = i.toMap();
             const QString cond = iMap.value("cond").toString();
             const QString type = iMap.value("type").toString();
@@ -524,6 +525,9 @@ public:
                 auto match1 = trueCondRegex.match(cond);
                 auto match2 = falseCondRegex.match(cond);
                 if (match1.hasMatch()) {
+                    if (showDebugInfo) {
+                        qDebug().noquote() << "true cond matched";
+                    }
                     int stepIndex = match1.captured(1).toInt();
                     if (stepIndex < stepData.count()) {
                         if (!stepData.at(stepIndex).toBool()) {
@@ -531,8 +535,10 @@ public:
                             continue;
                         }
                     }
-                }
-                if (match2.hasMatch()) {
+                } else if (match2.hasMatch()) {
+                    if (showDebugInfo) {
+                        qDebug().noquote() << "false cond matched";
+                    }
                     int stepIndex = match2.captured(1).toInt();
                     if (stepIndex < stepData.count()) {
                         if (stepData.at(stepIndex).toBool()) {
@@ -713,7 +719,6 @@ public:
             if (showDebugInfo) {
                 qDebug().noquote() << "[MAGIC$] index:" << index << "result:" << var2str(stepData);
             }
-            index++;
         }
         return stepData.last();
     }
