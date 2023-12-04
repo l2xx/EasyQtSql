@@ -706,6 +706,16 @@ public:
                 }
                 NonQueryResult res = execNonQuery(sql);
                 stepData.push_back(res.numRowsAffected());
+            } else if (type == "exec_insert") {
+                QString sql = param.value("sql").toString();
+                if (magicStrategy == "replace_value") {
+                    replaceStrFunc(sql);
+                }
+                if (showDebugInfo) {
+                    qDebug().noquote() << "[SQL]" << sql;
+                }
+                NonQueryResult res = execNonQuery(sql);
+                stepData.push_back(res.lastInsertId());
             } else if (type == "batch_exec") {
                 QString sql = param.value("sql").toString();
                 QVariantList data = param.value("data").toList();
